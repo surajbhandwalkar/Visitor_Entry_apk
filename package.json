@@ -1,0 +1,12 @@
+{
+  "name": "visitor-gate-system",
+  "private": true,
+  "workspaces": [
+    "apps/mobile",
+    "apps/dashboard"
+  ],
+  "scripts": {
+    "mobile": "npm --workspace apps/mobile run start",
+    "dashboard": "npm --workspace apps/dashboard run dev"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "expo": {
+    "name": "Visitor Gate",
+    "slug": "visitor-gate-system",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "android": {
+      "package": "com.company.visitorgate"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "05423ac0-397f-4ebd-80a6-319ea94b5deb"
+      }
+    },
+    "owner": "suraj_bhandwalkar"
+  }
+}
