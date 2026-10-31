@@ -22,3 +22,6 @@ Visitor approval system for a security gate:
 The database stores visitor name, phone, company, host, purpose, entry time,
 decision time, approver and gate access time. Never put the Supabase service
 role key in either client application.
+
+
+

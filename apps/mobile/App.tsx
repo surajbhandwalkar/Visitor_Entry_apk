@@ -109,9 +109,19 @@ function VisitorGateApp() {
       const notification = await supabase.functions.invoke("visitor-notification", { body: { visitor_id: visitor.id } });
       if (notification.error) {
         setSaving(false);
+        let notificationMessage = notification.error.message;
+        const context = (notification.error as { context?: Response }).context;
+        if (context) {
+          try {
+            const details = await context.clone().json();
+            if (typeof details?.error === "string") notificationMessage = details.error;
+          } catch {
+            // Keep the SDK error when the function response is not JSON.
+          }
+        }
         Alert.alert(
           "Saved, notification failed",
-          `The visitor record was saved, but the approval email could not be sent.\n\n${notification.error.message}`,
+          `The visitor record was saved, but the approval email could not be sent.\n\n${notificationMessage}`,
         );
         return;
       }
