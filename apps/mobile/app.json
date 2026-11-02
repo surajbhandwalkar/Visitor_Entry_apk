@@ -4,6 +4,7 @@
     "slug": "visitor-gate-system",
     "version": "1.0.0",
     "orientation": "portrait",
+    "scheme": "visitorgate",
     "android": {
       "package": "com.company.visitorgate"
     },

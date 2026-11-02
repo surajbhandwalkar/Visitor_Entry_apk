@@ -2,6 +2,7 @@ import { Component, ErrorInfo, ReactNode, useEffect, useState } from "react";
 import {
   Alert,
   Button,
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -46,6 +47,12 @@ function VisitorGateApp() {
   const [session, setSession] = useState<any>(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [resetPassword, setResetPassword] = useState("");
+  const [confirmResetPassword, setConfirmResetPassword] = useState("");
+  const [showResetPassword, setShowResetPassword] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
+  const [sendingReset, setSendingReset] = useState(false);
   const [form, setForm] = useState({ name: "", phone: "", company: "", host: "", purpose: "", approverEmails: "" });
   const [saving, setSaving] = useState(false);
   const [recentVisitors, setRecentVisitors] = useState<Visitor[]>([]);
@@ -66,9 +73,30 @@ function VisitorGateApp() {
 
   useEffect(() => {
     if (!supabase) return;
-    supabase.auth.getSession().then(({ data }) => setSession(data.session));
-    const { data } = supabase.auth.onAuthStateChange((_event, next) => setSession(next));
-    return () => data.subscription.unsubscribe();
+    const client = supabase;
+    const handleRecoveryLink = async (url: string | null) => {
+      if (!url) return;
+      const fragment = url.split("#")[1];
+      if (!fragment) return;
+      const values = new URLSearchParams(fragment);
+      const accessToken = values.get("access_token");
+      const refreshToken = values.get("refresh_token");
+      if (!accessToken || !refreshToken) return;
+      const { error } = await client.auth.setSession({ access_token: accessToken, refresh_token: refreshToken });
+      if (!error) setRecoveryMode(true);
+      else Alert.alert("Reset link error", error.message);
+    };
+    Linking.getInitialURL().then(handleRecoveryLink);
+    const linkSubscription = Linking.addEventListener("url", ({ url }) => handleRecoveryLink(url));
+    client.auth.getSession().then(({ data }) => setSession(data.session));
+    const { data } = client.auth.onAuthStateChange((event, next) => {
+      setSession(next);
+      if (event === "PASSWORD_RECOVERY") setRecoveryMode(true);
+    });
+    return () => {
+      linkSubscription.remove();
+      data.subscription.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -83,6 +111,42 @@ function VisitorGateApp() {
     if (!supabase) return;
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) Alert.alert("Login failed", error.message);
+  }
+
+  async function sendPasswordReset() {
+    if (!supabase || !email.trim()) {
+      Alert.alert("Email required", "Enter the watchman email first.");
+      return;
+    }
+    setSendingReset(true);
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: "visitorgate://reset-password",
+    });
+    setSendingReset(false);
+    if (error) Alert.alert("Could not send reset email", error.message);
+    else Alert.alert("Email sent", "Open the password reset link sent to your email, then return to this app.");
+  }
+
+  async function updatePassword() {
+    if (!supabase) return;
+    if (resetPassword.length < 6) {
+      Alert.alert("Invalid password", "Password must be at least 6 characters.");
+      return;
+    }
+    if (resetPassword !== confirmResetPassword) {
+      Alert.alert("Passwords do not match", "Enter the same password in both fields.");
+      return;
+    }
+    const { error } = await supabase.auth.updateUser({ password: resetPassword });
+    if (error) {
+      Alert.alert("Could not update password", error.message);
+      return;
+    }
+    setRecoveryMode(false);
+    setResetPassword("");
+    setConfirmResetPassword("");
+    await supabase.auth.signOut();
+    Alert.alert("Password updated", "Your password was changed. Please log in with the new password.");
   }
 
   async function registerVisitor() {
@@ -147,13 +211,35 @@ function VisitorGateApp() {
   }
 
   if (!session) {
+    if (recoveryMode) {
+      return (
+        <SafeAreaView style={styles.container}>
+          <Text style={styles.title}>Set new password</Text>
+          <Text style={styles.subtitle}>Enter and confirm your new watchman password.</Text>
+          <TextInput style={styles.input} placeholder="New password" secureTextEntry={!showResetPassword} autoComplete="new-password" textContentType="newPassword" value={resetPassword} onChangeText={setResetPassword} />
+          <TextInput style={styles.input} placeholder="Confirm new password" secureTextEntry={!showResetPassword} autoComplete="new-password" textContentType="newPassword" value={confirmResetPassword} onChangeText={setConfirmResetPassword} />
+          <Pressable onPress={() => setShowResetPassword(!showResetPassword)} style={styles.passwordToggle}>
+            <Text style={styles.passwordToggleText}>{showResetPassword ? "Hide passwords" : "Show passwords"}</Text>
+          </Pressable>
+          <Button title="Set password" onPress={updatePassword} />
+        </SafeAreaView>
+      );
+    }
     return (
       <SafeAreaView style={styles.container}>
         <Text style={styles.title}>Visitor Gate</Text>
         <Text style={styles.subtitle}>Watchman login</Text>
         <TextInput style={styles.input} placeholder="Email" autoCapitalize="none" autoComplete="email" keyboardType="email-address" textContentType="username" value={email} onChangeText={setEmail} />
-        <TextInput style={styles.input} placeholder="Password" secureTextEntry autoComplete="password" textContentType="password" value={password} onChangeText={setPassword} />
+        <View style={styles.passwordRow}>
+          <TextInput style={styles.passwordInput} placeholder="Password" secureTextEntry={!showPassword} autoComplete="password" textContentType="password" value={password} onChangeText={setPassword} />
+          <Pressable onPress={() => setShowPassword(!showPassword)} style={styles.passwordToggle}>
+            <Text style={styles.passwordToggleText}>{showPassword ? "Hide" : "Show"}</Text>
+          </Pressable>
+        </View>
         <Button title="Login" onPress={signIn} />
+        <Pressable onPress={sendPasswordReset} disabled={sendingReset}>
+          <Text style={styles.forgotPassword}>{sendingReset ? "Sending reset email..." : "Forgot password?"}</Text>
+        </Pressable>
       </SafeAreaView>
     );
   }
@@ -250,6 +336,11 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, fontWeight: "700", color: "#526581", marginBottom: 6 },
   helper: { fontSize: 12, color: "#718096", marginBottom: 8 },
   input: { backgroundColor: "white", borderWidth: 1, borderColor: "#d7e1ef", borderRadius: 12, padding: 14, marginBottom: 12, fontSize: 16 },
+  passwordRow: { flexDirection: "row", alignItems: "center", marginBottom: 12 },
+  passwordInput: { flex: 1, backgroundColor: "white", borderWidth: 1, borderColor: "#d7e1ef", borderRadius: 12, padding: 14, fontSize: 16 },
+  passwordToggle: { marginLeft: 8, padding: 10 },
+  passwordToggleText: { color: "#3674d9", fontWeight: "700" },
+  forgotPassword: { color: "#3674d9", textAlign: "center", marginTop: 16, fontWeight: "700" },
   select: { backgroundColor: "white", borderWidth: 1, borderColor: "#d7e1ef", borderRadius: 12, padding: 14, marginBottom: 6, flexDirection: "row", justifyContent: "space-between" },
   selectText: { color: "#102a56", fontSize: 16 },
   placeholder: { color: "#8a99ad", fontSize: 16 },
